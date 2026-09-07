@@ -1,0 +1,16 @@
+# Secrets
+.env
+*.env
+
+# Backup files
+*.backup
+*.before-silence
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Logs
+*.log

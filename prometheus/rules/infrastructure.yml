@@ -1,0 +1,155 @@
+groups:
+  - name: infrastructure
+    rules:
+
+      # =========================
+      # CPU
+      # =========================
+      - alert: HighCPUUsage
+        expr: |
+          100 * (
+            1 - avg by (instance) (
+              rate(node_cpu_seconds_total{mode="idle"}[5m])
+            )
+          ) > 80
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage has been above 80% for more than 10 minutes."
+
+      - alert: CriticalCPUUsage
+        expr: |
+          100 * (
+            1 - avg by (instance) (
+              rate(node_cpu_seconds_total{mode="idle"}[5m])
+            )
+          ) > 90
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical CPU usage on {{ $labels.instance }}"
+          description: "CPU usage has been above 90% for more than 5 minutes."
+
+      # =========================
+      # MEMORY
+      # =========================
+      - alert: HighMemoryUsage
+        expr: |
+          100 * (
+            1 - (
+              node_memory_MemAvailable_bytes
+              /
+              node_memory_MemTotal_bytes
+            )
+          ) > 80
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage has been above 80% for more than 10 minutes."
+
+      - alert: CriticalMemoryUsage
+        expr: |
+          100 * (
+            1 - (
+              node_memory_MemAvailable_bytes
+              /
+              node_memory_MemTotal_bytes
+            )
+          ) > 90
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical memory usage on {{ $labels.instance }}"
+          description: "Memory usage has been above 90% for more than 5 minutes."
+
+      # =========================
+      # DISK
+      # =========================
+      - alert: HighDiskUsage
+        expr: |
+          100 * (
+            1 -
+            (
+              node_filesystem_avail_bytes{
+                mountpoint="/",
+                fstype!~"tmpfs|overlay"
+              }
+              /
+              node_filesystem_size_bytes{
+                mountpoint="/",
+                fstype!~"tmpfs|overlay"
+              }
+            )
+          ) > 80
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High disk usage on {{ $labels.instance }}"
+          description: "Root filesystem usage has exceeded 80%."
+
+      - alert: CriticalDiskUsage
+        expr: |
+          100 * (
+            1 -
+            (
+              node_filesystem_avail_bytes{
+                mountpoint="/",
+                fstype!~"tmpfs|overlay"
+              }
+              /
+              node_filesystem_size_bytes{
+                mountpoint="/",
+                fstype!~"tmpfs|overlay"
+              }
+            )
+          ) > 90
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical disk usage on {{ $labels.instance }}"
+          description: "Root filesystem usage has exceeded 90%."
+
+      # =========================
+      # LOAD
+      # =========================
+      - alert: HighSystemLoad
+        expr: |
+          node_load1
+          >
+          count by (instance) (
+            node_cpu_seconds_total{mode="idle"}
+          )
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High system load on {{ $labels.instance }}"
+          description: "1-minute system load is higher than the available CPU core count."
+
+      # =========================
+      # SWAP
+      # =========================
+      - alert: HighSwapUsage
+        expr: |
+          (
+            1 -
+            (
+              node_memory_SwapFree_bytes
+              /
+              node_memory_SwapTotal_bytes
+            )
+          ) * 100 > 80
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High swap usage on {{ $labels.instance }}"
+          description: "Swap usage has exceeded 80% for more than 10 minutes."

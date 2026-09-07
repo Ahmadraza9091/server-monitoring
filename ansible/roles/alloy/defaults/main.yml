@@ -1,0 +1,4 @@
+---
+alloy_package: alloy
+alloy_config_path: /etc/alloy/config.alloy
+alloy_listen_addr: "0.0.0.0:12345"

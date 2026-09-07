@@ -1,0 +1,75 @@
+// ============================================================
+// LINUX / SYSTEM METRICS
+// ============================================================
+prometheus.exporter.unix "node" {
+}
+
+prometheus.scrape "node" {
+  targets    = prometheus.exporter.unix.node.targets
+  forward_to = [prometheus.remote_write.local.receiver]
+}
+
+// ============================================================
+// MYSQL METRICS
+// ============================================================
+prometheus.exporter.mysql "mysql" {
+  data_source_name = "alloy:AlloyMonitor123@tcp(127.0.0.1:3306)/"
+}
+
+prometheus.scrape "mysql" {
+  targets    = prometheus.exporter.mysql.mysql.targets
+  forward_to = [prometheus.remote_write.local.receiver]
+}
+
+
+
+// ============================================================
+// PROMETHEUS REMOTE WRITE
+// ============================================================
+
+prometheus.remote_write "local" {
+  endpoint {
+    url = "http://127.0.0.1:19090/api/v1/write"
+  }
+}
+
+
+loki.write "local" {
+  endpoint {
+    url = "http://127.0.0.1:13100/loki/api/v1/push"
+  }
+}
+local.file_match "nginx_logs" {
+  path_targets = [
+    {
+      __path__ = "/var/log/nginx/*.log",
+      job      = "nginx",
+    },
+  ]
+}
+
+loki.source.file "nginx_logs" {
+  targets    = local.file_match.nginx_logs.targets
+  forward_to = [loki.write.local.receiver]
+}
+
+
+local.file_match "system_logs" {
+  path_targets = [
+    {
+      __path__ = "/var/log/syslog",
+      job      = "system",
+      service  = "syslog",
+    },
+    {
+      __path__ = "/var/log/auth.log",
+      job      = "system",
+      service  = "auth",
+    },
+  ]
+}
+
+loki.source.file "system_logs" {
+  targets    = local.file_match.system_logs.targets
+  forward_to = [loki.write.local.receiver]
+}

@@ -1,44 +1,128 @@
 // ============================================================
-// LINUX / SYSTEM METRICS
-// ============================================================
-prometheus.exporter.unix "node" {
-}
-
-prometheus.scrape "node" {
-  targets    = prometheus.exporter.unix.node.targets
-  forward_to = [prometheus.remote_write.local.receiver]
-}
-
-// ============================================================
-// MYSQL METRICS
-// ============================================================
-prometheus.exporter.mysql "mysql" {
-  data_source_name = "alloy:AlloyMonitor123@tcp(127.0.0.1:3306)/"
-}
-
-prometheus.scrape "mysql" {
-  targets    = prometheus.exporter.mysql.mysql.targets
-  forward_to = [prometheus.remote_write.local.receiver]
-}
-
-
-
-// ============================================================
 // PROMETHEUS REMOTE WRITE
 // ============================================================
 
 prometheus.remote_write "local" {
   endpoint {
-    url = "http://127.0.0.1:19090/api/v1/write"
+    url = "{{ prometheus_remote_write_url }}"
   }
 }
 
+
+// ============================================================
+// LOKI WRITE
+// ============================================================
 
 loki.write "local" {
   endpoint {
-    url = "http://127.0.0.1:13100/loki/api/v1/push"
+    url = "{{ loki_write_url }}"
   }
 }
+
+
+// ============================================================
+// LINUX / SYSTEM METRICS
+// ============================================================
+
+prometheus.exporter.unix "node" {
+}
+
+prometheus.scrape "node" {
+  targets = prometheus.exporter.unix.node.targets
+
+  forward_to = [
+    prometheus.remote_write.local.receiver,
+  ]
+
+  scrape_interval = "15s"
+}
+
+
+// ============================================================
+// DOCKER MONITORING
+// ============================================================
+
+{% if docker_present %}
+
+prometheus.exporter.cadvisor "docker" {
+  docker_host = "{{ docker_socket }}"
+  storage_duration = "5m"
+}
+
+prometheus.scrape "docker" {
+  targets = prometheus.exporter.cadvisor.docker.targets
+
+  forward_to = [
+    prometheus.remote_write.local.receiver,
+  ]
+
+  scrape_interval = "15s"
+}
+
+
+// ============================================================
+// DOCKER CONTAINER DISCOVERY
+// ============================================================
+
+discovery.docker "containers" {
+  host = "{{ docker_socket }}"
+}
+
+
+// ============================================================
+// DOCKER CONTAINER LOGS
+// ============================================================
+
+loki.source.docker "containers" {
+  host = "{{ docker_socket }}"
+
+  targets = discovery.docker.containers.targets
+
+  labels = {
+    job = "docker",
+  }
+
+  forward_to = [
+    loki.write.local.receiver,
+  ]
+}
+
+{% endif %}
+
+
+// ============================================================
+// PYTHON APPLICATION METRICS
+// ============================================================
+
+{% if python_app_present %}
+
+prometheus.scrape "python_app" {
+  targets = [
+    {
+      "__address__" = "127.0.0.1:5000",
+      "job"         = "python-app",
+      "service"     = "python-app",
+    },
+  ]
+
+  metrics_path = "/metrics"
+
+  forward_to = [
+    prometheus.remote_write.local.receiver,
+  ]
+
+  scrape_interval = "15s"
+}
+
+{% endif %}
+
+
+// ============================================================
+// NGINX LOGS
+// ============================================================
+
+{% if nginx_present %}
+
 local.file_match "nginx_logs" {
   path_targets = [
     {
@@ -49,10 +133,19 @@ local.file_match "nginx_logs" {
 }
 
 loki.source.file "nginx_logs" {
-  targets    = local.file_match.nginx_logs.targets
-  forward_to = [loki.write.local.receiver]
+  targets = local.file_match.nginx_logs.targets
+
+  forward_to = [
+    loki.write.local.receiver,
+  ]
 }
 
+{% endif %}
+
+
+// ============================================================
+// SYSTEM LOGS
+// ============================================================
 
 local.file_match "system_logs" {
   path_targets = [
@@ -70,6 +163,9 @@ local.file_match "system_logs" {
 }
 
 loki.source.file "system_logs" {
-  targets    = local.file_match.system_logs.targets
-  forward_to = [loki.write.local.receiver]
+  targets = local.file_match.system_logs.targets
+
+  forward_to = [
+    loki.write.local.receiver,
+  ]
 }

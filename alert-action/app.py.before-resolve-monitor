@@ -1,8 +1,8 @@
+
 import os
 import threading
 import logging
 import json
-import time
 import requests
 
 from datetime import datetime, timedelta, timezone
@@ -286,7 +286,6 @@ def build_alert_message(
             if action == "accepted":
 
                 text += (
-
                     "✅ *Acknowledgement:* ACCEPTED\n\n"
 
                     f"*Acknowledged by:* "
@@ -294,13 +293,11 @@ def build_alert_message(
 
                     f"*Acknowledged at:* "
                     f"{action_at}\n\n"
-
                 )
 
             elif action == "rejected":
 
                 text += (
-
                     "⚠️ *Acknowledgement:* REJECTED\n\n"
 
                     f"*Rejected by:* "
@@ -308,32 +305,25 @@ def build_alert_message(
 
                     f"*Rejected at:* "
                     f"{action_at}\n\n"
-
                 )
 
         else:
 
             text += (
-
                 "ℹ️ *Acknowledgement:* "
                 "NOT ACKNOWLEDGED\n\n"
-
             )
 
 
         if ends_at:
 
             text += (
-
                 f"*Resolved at:* "
                 f"{ends_at}\n\n"
-
             )
 
         text += (
-
             f"*Status:* {status_text}"
-
         )
 
 
@@ -344,9 +334,7 @@ def build_alert_message(
     else:
 
         text += (
-
             f"*Status:* {status_text}"
-
         )
 
 
@@ -570,311 +558,6 @@ def get_alert_by_fingerprint(
 
 
 # ============================================================
-# UPDATE SLACK MESSAGE TO RESOLVED
-# ============================================================
-
-def update_resolved_slack_message(
-    acknowledgement
-):
-
-    channel_id = acknowledgement.get(
-        "channel_id"
-    )
-
-    message_ts = acknowledgement.get(
-        "message_ts"
-    )
-
-    fingerprint = acknowledgement.get(
-        "fingerprint"
-    )
-
-
-    if not channel_id or not message_ts:
-
-        logger.warning(
-            f"RESOLVE_SKIPPED "
-            f"fingerprint={fingerprint} "
-            f"reason=missing_slack_message"
-        )
-
-        return False
-
-
-    # --------------------------------------------------------
-    # USE SAVED ALERT DATA
-    # --------------------------------------------------------
-
-    alert = acknowledgement.get(
-        "alert_data",
-        {}
-    )
-
-
-    # --------------------------------------------------------
-    # SET RESOLVED TIME
-    # --------------------------------------------------------
-
-    resolved_at = datetime.now(
-        timezone.utc
-    ).strftime(
-        "%Y-%m-%d %H:%M:%S UTC"
-    )
-
-
-    alert["endsAt"] = resolved_at
-
-
-    # --------------------------------------------------------
-    # BUILD MESSAGE
-    # --------------------------------------------------------
-
-    text, blocks = build_alert_message(
-
-        alert,
-
-        "resolved",
-
-        acknowledgement
-
-    )
-
-
-    try:
-
-        response = slack.chat_update(
-
-            channel=channel_id,
-
-            ts=message_ts,
-
-            text=text,
-
-            blocks=blocks
-
-        )
-
-
-        if response.get("ok", False):
-
-            logger.info(
-
-                f"ALERT_RESOLVED "
-                f"alert={acknowledgement.get('alert')} "
-                f"server={acknowledgement.get('server')} "
-                f"severity={acknowledgement.get('severity')} "
-                f"fingerprint={fingerprint} "
-                f"ack_action={acknowledgement.get('action')} "
-                f"ack_user={acknowledgement.get('user_name')} "
-                f"ack_at={acknowledgement.get('action_at')} "
-                f"resolved_at={resolved_at} "
-                f"method=background_monitor"
-
-            )
-
-            return True
-
-
-        logger.warning(
-
-            f"RESOLVE_SLACK_UPDATE_FAILED "
-            f"fingerprint={fingerprint} "
-            f"reason=slack_not_ok"
-
-        )
-
-        return False
-
-
-    except Exception as e:
-
-        logger.exception(
-
-            f"RESOLVE_SLACK_UPDATE_FAILED "
-            f"fingerprint={fingerprint} "
-            f"error={e}"
-
-        )
-
-        return False
-
-
-# ============================================================
-# BACKGROUND RESOLVED ALERT MONITOR
-# ============================================================
-
-def resolved_alert_monitor():
-
-    logger.info(
-        "Resolved alert monitor started"
-    )
-
-
-    while True:
-
-        try:
-
-            # ------------------------------------------------
-            # GET CURRENT ACTIVE ALERTS
-            # ------------------------------------------------
-
-            response = requests.get(
-
-                f"{ALERTMANAGER_URL}/api/v2/alerts",
-
-                params={
-                    "active": "true"
-                },
-
-                timeout=10
-
-            )
-
-
-            response.raise_for_status()
-
-
-            active_alerts = response.json()
-
-
-            active_fingerprints = {
-
-                alert.get("fingerprint")
-
-                for alert in active_alerts
-
-                if alert.get("fingerprint")
-
-            }
-
-
-            # ------------------------------------------------
-            # GET SAVED ACKNOWLEDGEMENTS
-            # ------------------------------------------------
-
-            with ACK_STATE_LOCK:
-
-                acknowledgements = (
-                    load_acknowledgements()
-                )
-
-
-            changed = False
-
-
-            # ------------------------------------------------
-            # CHECK ACCEPTED ALERTS
-            # ------------------------------------------------
-
-            for fingerprint, acknowledgement in (
-                acknowledgements.items()
-            ):
-
-
-                # Already resolved
-                if acknowledgement.get(
-                    "resolved_at"
-                ):
-
-                    continue
-
-
-                # Only ACCEPTED alerts
-                if acknowledgement.get(
-                    "action"
-                ) != "accepted":
-
-                    continue
-
-
-                # ------------------------------------------------
-                # ALERT STILL ACTIVE
-                # ------------------------------------------------
-
-                if fingerprint in active_fingerprints:
-
-                    continue
-
-
-                # ------------------------------------------------
-                # ALERT NO LONGER ACTIVE
-                # ------------------------------------------------
-
-                logger.info(
-
-                    f"ALERT_NO_LONGER_ACTIVE "
-                    f"fingerprint={fingerprint} "
-                    f"alert={acknowledgement.get('alert')} "
-                    f"server={acknowledgement.get('server')}"
-
-                )
-
-
-                # ------------------------------------------------
-                # UPDATE SLACK
-                # ------------------------------------------------
-
-                success = update_resolved_slack_message(
-                    acknowledgement
-                )
-
-                acknowledgement["resolved_at"] = (
-                    datetime.now(timezone.utc).strftime(
-                        "%Y-%m-%d %H:%M:%S UTC"
-                    )
-                )
-
-                acknowledgement["resolution_status"] = "resolved"
-
-                acknowledgements[fingerprint] = acknowledgement
-
-                changed = True
-
-
-            # ------------------------------------------------
-
-            # SAVE UPDATED STATE
-
-            # ------------------------------------------------
-
-
-            if changed:
-
-
-                with ACK_STATE_LOCK:
-
-
-                    save_acknowledgements(
-
-                        acknowledgements
-
-                    )
-
-
-        except Exception as e:
-
-
-            logger.exception(
-
-                f"RESOLVE_MONITOR_ERROR "
-
-                f"error={e}"
-
-
-            )
-
-
-
-        # ----------------------------------------------------
-
-        # CHECK EVERY 10 SECONDS
-
-        # ----------------------------------------------------
-
-        time.sleep(10)
-
-
-# ============================================================
 # ACCEPT BUTTON
 # ============================================================
 
@@ -922,12 +605,10 @@ def accept_alert(
 
 
         logger.info(
-
             f"ACCEPT_CLICKED "
             f"user={user_name} "
             f"user_id={user_id} "
             f"fingerprint={fingerprint}"
-
         )
 
 
@@ -943,12 +624,10 @@ def accept_alert(
         if not alert:
 
             logger.warning(
-
                 f"ALERT_NOT_FOUND "
                 f"user={user_name} "
                 f"user_id={user_id} "
                 f"fingerprint={fingerprint}"
-
             )
 
 
@@ -970,12 +649,9 @@ def accept_alert(
                             "type": "mrkdwn",
 
                             "text": (
-
                                 "⚠️ *Alert no longer active*\n\n"
-
                                 "The alert could not be found "
                                 "in Alertmanager."
-
                             )
 
                         }
@@ -1067,12 +743,7 @@ def accept_alert(
             "silence_id": silence_id,
 
             "renotify_at":
-                renotify_time.isoformat(),
-
-            # IMPORTANT:
-            # Save complete alert because Alertmanager
-            # may no longer return it after resolution.
-            "alert_data": alert
+                renotify_time.isoformat()
 
         }
 
@@ -1159,7 +830,7 @@ def accept_alert(
 
     except Exception as e:
 
-        logger.exception(
+        logger.error(
             f"ERROR while accepting alert: {e}"
         )
 
@@ -1212,21 +883,10 @@ def reject_alert(
 
 
         logger.info(
-
             f"REJECT_CLICKED "
             f"user={user_name} "
             f"user_id={user_id} "
             f"fingerprint={fingerprint}"
-
-        )
-
-
-        # ----------------------------------------------------
-        # GET ALERT
-        # ----------------------------------------------------
-
-        alert = get_alert_by_fingerprint(
-            fingerprint
         )
 
 
@@ -1262,43 +922,6 @@ def reject_alert(
         }
 
 
-        if alert:
-
-            acknowledgement[
-                "alert_data"
-            ] = alert
-
-
-            labels = alert.get(
-                "labels",
-                {}
-            )
-
-
-            acknowledgement[
-                "alert"
-            ] = labels.get(
-                "alertname",
-                "Unknown"
-            )
-
-
-            acknowledgement[
-                "server"
-            ] = labels.get(
-                "instance",
-                "Unknown"
-            )
-
-
-            acknowledgement[
-                "severity"
-            ] = labels.get(
-                "severity",
-                "unknown"
-            )
-
-
         save_acknowledgement(
 
             fingerprint,
@@ -1324,30 +947,10 @@ def reject_alert(
 
                 {
 
-                    "type": "section",
 
-                    "text": {
 
-                        "type": "mrkdwn",
-
-                        "text": (
-
-                            "🚨 *ALERT FIRING — "
-                            "Production Monitoring*\n\n"
-
-                            "⚠️ *Alert Rejected*\n\n"
-
-                            f"*Rejected by:* "
-                            f"{user_name}\n\n"
-
-                            f"*Rejected at:* "
-                            f"{rejected_at}\n\n"
-
-                            "Alert remains unacknowledged. "
                             "Normal Alertmanager "
-                            "notifications will continue.\n\n"
-
-                            "*Status:* 🔴 FIRING"
+                            "notifications will continue."
 
                         )
 
@@ -1359,24 +962,50 @@ def reject_alert(
 
         )
 
+                            "Alert remains unacknowledged. "
 
+                            "*Status:* 🔴 FIRING\n\n"
+                    "type": "section",
+                            f"{user_name}\n\n"
+                            f"{rejected_at}\n\n"
         # ----------------------------------------------------
+                            f"*Rejected at:* "
+
+
+                            f"*Rejected by:* "
         # AUDIT LOG
+
+                            "⚠️ *Alert rejected*\n\n"
         # ----------------------------------------------------
+                    "text": {
+
+
+                            "Production Monitoring*\n\n"
+
 
         logger.info(
+                            "🚨 *ALERT FIRING — "
+                        "type": "mrkdwn",
+
 
             f"ALERT_REJECTED "
+                        "text": (
             f"user={user_name} "
+
             f"user_id={user_id} "
+
             f"fingerprint={fingerprint}"
+
 
         )
 
 
+
     except Exception as e:
 
-        logger.exception(
+
+        logger.error(
+
             f"ERROR while rejecting alert: {e}"
         )
 
@@ -1391,94 +1020,144 @@ def reject_alert(
 )
 def health():
 
+
     return jsonify(
+
         {
+
             "status": "ok"
+
         }
+
     )
 
 
+
 # ============================================================
+
 # TEST SLACK
+
 # ============================================================
+
 
 @app.route(
     "/test-slack",
+
     methods=["GET"]
 )
+
 def test_slack():
+
 
     warning = slack.chat_postMessage(
 
+
         channel=WARNING_CHANNEL,
 
+
         text=(
+
             "Promax Monitoring — "
+
             "WARNING channel test"
+
         )
 
     )
+
 
 
     critical = slack.chat_postMessage(
 
         channel=CRITICAL_CHANNEL,
 
+
         text=(
+
             "Promax Monitoring — "
+
             "CRITICAL channel test"
+
         )
 
     )
 
 
+
     return jsonify(
 
+
         {
+
+
             "warning_ok":
+
                 warning["ok"],
+
 
             "critical_ok":
                 critical["ok"]
+
+
         }
+
 
     )
 
 
+
 # ============================================================
+
 # ALERTMANAGER WEBHOOK
+
 # ============================================================
+
 
 @app.route(
+
     "/alertmanager",
+
     methods=["POST"]
 )
+
 def alertmanager():
 
+
     try:
+
 
         data = request.get_json()
 
 
         logger.info(
+
             "Alertmanager webhook received"
+
         )
+
 
 
         status = data.get(
             "status",
             "firing"
+
         )
+
 
 
         # ----------------------------------------------------
         # PROCESS EVERY ALERT
+
         # ----------------------------------------------------
+
 
         for alert in data.get(
             "alerts",
+
             []
+
         ):
+
 
             labels = alert.get(
                 "labels",
@@ -1488,8 +1167,11 @@ def alertmanager():
 
             severity = labels.get(
                 "severity",
+
                 "warning"
+
             )
+
 
 
             fingerprint = alert.get(
@@ -1498,26 +1180,37 @@ def alertmanager():
             )
 
 
+
             # ------------------------------------------------
+
             # SELECT CHANNEL
+
             # ------------------------------------------------
+
 
             if severity == "critical":
 
                 channel = CRITICAL_CHANNEL
 
+
             else:
+
 
                 channel = WARNING_CHANNEL
 
 
+
             # =================================================
+
             # FIRING
+
             # =================================================
+
 
             if status == "firing":
 
                 text, blocks = build_alert_message(
+
 
                     alert,
 
@@ -1526,24 +1219,33 @@ def alertmanager():
                 )
 
 
+
                 # ---------------------------------------------
+
                 # SEND SLACK MESSAGE
                 # ---------------------------------------------
 
+
                 response = slack.chat_postMessage(
+
 
                     channel=channel,
 
+
                     text=text,
+
 
                     blocks=blocks
 
                 )
 
 
+
                 # ---------------------------------------------
+
                 # SAVE ORIGINAL SLACK MESSAGE
                 # ---------------------------------------------
+
 
                 existing_ack = get_acknowledgement(
 
@@ -1552,19 +1254,25 @@ def alertmanager():
                 )
 
 
+
                 if not existing_ack:
 
                     save_acknowledgement(
 
                         fingerprint,
 
+
                         {
 
+
                             "action":
+
                                 "not_acknowledged",
+
 
                             "channel_id":
                                 channel,
+
 
                             "message_ts":
                                 response["ts"],
@@ -1572,134 +1280,192 @@ def alertmanager():
                             "fingerprint":
                                 fingerprint,
 
+
                             "alert":
+
                                 labels.get(
                                     "alertname",
+
                                     "Unknown"
                                 ),
 
+
                             "server":
+
                                 labels.get(
+
                                     "instance",
                                     "Unknown"
+
                                 ),
 
                             "severity":
                                 labels.get(
                                     "severity",
                                     "unknown"
-                                ),
 
-                            "alert_data":
-                                alert
+                                )
+
 
                         }
 
+
                     )
+
 
 
                 logger.info(
 
+
                     f"Slack firing message sent: "
+
                     f"channel={channel}, "
+
                     f"ts={response['ts']}, "
                     f"fingerprint={fingerprint}"
 
+
                 )
+
 
 
             # =================================================
             # RESOLVED
+
             # =================================================
+
 
             else:
 
+
                 acknowledgement = (
+
                     get_acknowledgement(
+
                         fingerprint
+
                     )
+
                 )
 
 
+
                 # ---------------------------------------------
+
                 # RESOLVED TIME
+
                 # ---------------------------------------------
+
 
                 resolved_at = datetime.now(
                     timezone.utc
                 ).strftime(
+
                     "%Y-%m-%d %H:%M:%S UTC"
                 )
 
 
+
                 # ---------------------------------------------
+
                 # BUILD RESOLVED MESSAGE
+
                 # ---------------------------------------------
 
                 text, blocks = build_alert_message(
 
+
                     alert,
+
 
                     "resolved",
 
+
                     acknowledgement
+
 
                 )
 
 
+
                 # ---------------------------------------------
-                # TRY ORIGINAL SLACK MESSAGE
+
+                # TRY TO UPDATE ORIGINAL MESSAGE
+
                 # ---------------------------------------------
+
 
                 updated_original = False
 
 
+
                 if acknowledgement:
 
+
                     original_channel = (
+
                         acknowledgement.get(
                             "channel_id"
                         )
                     )
 
+
                     original_ts = (
+
                         acknowledgement.get(
+
                             "message_ts"
                         )
+
                     )
+
 
 
                     if (
                         original_channel
                         and original_ts
+
                     ):
+
 
                         try:
 
+
                             client_response = (
+
                                 slack.chat_update(
+
 
                                     channel=original_channel,
 
+
                                     ts=original_ts,
+
 
                                     text=text,
 
                                     blocks=blocks
 
                                 )
+
                             )
+
 
 
                             updated_original = (
+
                                 client_response.get(
+
                                     "ok",
                                     False
                                 )
+
                             )
 
 
+
                         except Exception as update_error:
+
 
                             logger.warning(
 
@@ -1707,32 +1473,46 @@ def alertmanager():
                                 f"original Slack message: "
                                 f"{update_error}"
 
+
                             )
 
 
+
                 # ---------------------------------------------
-                # FALLBACK NEW RESOLVED MESSAGE
+
+                # FALLBACK: SEND NEW RESOLVED MESSAGE
+
                 # ---------------------------------------------
+
 
                 if not updated_original:
 
+
                     response = slack.chat_postMessage(
+
 
                         channel=channel,
 
+
                         text=text,
 
+
                         blocks=blocks
+
 
                     )
 
 
+
                     logger.info(
 
+
                         f"Slack resolved message sent: "
+
                         f"channel={channel}, "
                         f"ts={response['ts']}, "
                         f"fingerprint={fingerprint}"
+
 
                     )
 
@@ -1741,9 +1521,13 @@ def alertmanager():
 
                     logger.info(
 
+
                         f"Original Slack message updated "
+
                         f"to RESOLVED: "
+
                         f"fingerprint={fingerprint}"
+
 
                     )
 
@@ -1752,80 +1536,119 @@ def alertmanager():
                 # RESOLVED AUDIT LOG
                 # ---------------------------------------------
 
+
                 if acknowledgement:
+
 
                     logger.info(
 
+
                         f"ALERT_RESOLVED "
+
                         f"alert={labels.get('alertname', 'Unknown')} "
+
                         f"server={labels.get('instance', 'Unknown')} "
+
                         f"severity={labels.get('severity', 'unknown')} "
+
                         f"fingerprint={fingerprint} "
                         f"ack_action={acknowledgement.get('action')} "
                         f"ack_user={acknowledgement.get('user_name')} "
                         f"ack_user_id={acknowledgement.get('user_id')} "
                         f"ack_at={acknowledgement.get('action_at')} "
+
                         f"resolved_at={resolved_at}"
 
+
                     )
+
 
                 else:
 
+
                     logger.info(
 
+
                         f"ALERT_RESOLVED "
+
                         f"alert={labels.get('alertname', 'Unknown')} "
+
                         f"server={labels.get('instance', 'Unknown')} "
                         f"severity={labels.get('severity', 'unknown')} "
                         f"fingerprint={fingerprint} "
+
                         f"ack_action=not_acknowledged "
+
                         f"resolved_at={resolved_at}"
+
 
                     )
 
 
+
         return jsonify(
+
+
             {
                 "ok": True
             }
+
         )
+
 
 
     except Exception as e:
 
-        logger.exception(
+
+        logger.error(
+
             f"ERROR processing Alertmanager webhook: {e}"
+
         )
+
 
 
         return jsonify(
 
             {
                 "ok": False,
+
                 "error": str(e)
+
             }
+
 
         ), 500
 
 
-# ============================================================
-# SOCKET MODE
+
 # ============================================================
 
+# SOCKET MODE
+
+# ============================================================
+
+
 def start_socket_mode():
+
 
     logger.info(
         "Starting Slack Socket Mode..."
     )
 
 
+
     handler = SocketModeHandler(
+
 
         bolt_app,
 
+
         os.environ.get(
             "SLACK_APP_TOKEN"
+
         )
+
 
     )
 
@@ -1833,45 +1656,42 @@ def start_socket_mode():
     handler.start()
 
 
+
 # ============================================================
 # MAIN
+
 # ============================================================
+
 
 if __name__ == "__main__":
 
+
     # --------------------------------------------------------
-    # START SOCKET MODE
+
+    # START SOCKET MODE IN BACKGROUND
     # --------------------------------------------------------
 
     socket_thread = threading.Thread(
 
         target=start_socket_mode,
 
+
         daemon=True
 
+
     )
+
 
     socket_thread.start()
 
 
-    # --------------------------------------------------------
-    # START RESOLVED ALERT MONITOR
-    # --------------------------------------------------------
-
-    resolve_thread = threading.Thread(
-
-        target=resolved_alert_monitor,
-
-        daemon=True
-
-    )
-
-    resolve_thread.start()
-
 
     # --------------------------------------------------------
+
     # START FLASK
+
     # --------------------------------------------------------
+
 
     app.run(
 
@@ -1879,4 +1699,6 @@ if __name__ == "__main__":
 
         port=5000
 
+
     )
+

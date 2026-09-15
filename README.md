@@ -1,6 +1,5 @@
 # Promax Production Monitoring System
 
-
 [![Status](https://img.shields.io/badge/status-production-green?style=for-the-badge)](https://github.com)
 [![License](https://img.shields.io/badge/license-proprietary-blue?style=for-the-badge)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-linux-orange?style=for-the-badge)](https://www.linux.org)
@@ -9,8 +8,6 @@
 A **production-grade, centralized monitoring and alerting platform** for Promax on-premises servers with real-time dashboards, intelligent alerting, and interactive incident management via Slack.
 
 [Features](#features) • [Quick Start](#quick-start) • [Architecture](#architecture) • [Deployment](#deployment) • [Troubleshooting](#troubleshooting)
-
-</div>
 
 ---
 
@@ -21,6 +18,7 @@ A **production-grade, centralized monitoring and alerting platform** for Promax 
 - [System Architecture](#system-architecture)
 - [Components](#components)
 - [Complete Workflow](#complete-workflow)
+- [System Diagrams (DFD / ERD / Use Case)](#system-diagrams-dfd--erd--use-case)
 - [Deployment Guide](#deployment-guide)
 - [Configuration](#configuration)
 - [Monitoring & Dashboards](#monitoring--dashboards)
@@ -107,6 +105,71 @@ When something goes wrong, the system automatically detects, alerts, and enables
                   ┌────────┼────────┐
                   ▼        ▼        ▼
             Engineer   Actions   Resolution
+```
+
+### 🖼️ Visual System Diagram (AWS Servers → Monitoring Stack → Slack)
+
+```mermaid
+flowchart TB
+    subgraph AWS["☁️ AWS Production Servers"]
+        direction LR
+        S1["🖥️ EC2 Server 1<br/>Grafana Alloy Agent"]
+        S2["🖥️ EC2 Server 2<br/>Grafana Alloy Agent"]
+        S3["🖥️ EC2 Server 3<br/>Grafana Alloy Agent"]
+    end
+
+    subgraph MON["🖥️ Monitoring Server (On-Prem / EC2)"]
+        direction TB
+        PROM["⚙️ Prometheus<br/>Metrics Store + Alert Evaluator<br/>:9090"]
+        LOKI["📝 Loki<br/>Log Storage<br/>:3100"]
+        GRAF["📊 Grafana<br/>Dashboards<br/>:3000"]
+        AM["🚨 Alertmanager<br/>Routing & Grouping<br/>:9093"]
+        AAS["🤖 Alert Action Service<br/>Flask Webhook Handler<br/>:5000"]
+        STATE[("Alert State<br/>JSON File")]
+    end
+
+    subgraph SLACKBOX["💬 Slack"]
+        direction TB
+        MSG["Incident Message<br/>+ Action Buttons"]
+        RESMSG["✅ Resolved<br/>Notification"]
+    end
+
+    ENG(["🧑‍💻 On-Call Engineer"])
+
+    %% Metrics/logs flow
+    S1 -- "metrics (remote_write)" --> PROM
+    S2 -- "metrics (remote_write)" --> PROM
+    S3 -- "metrics (remote_write)" --> PROM
+    S1 -- "logs" --> LOKI
+    S2 -- "logs" --> LOKI
+    S3 -- "logs" --> LOKI
+
+    %% Grafana reads
+    PROM -- "query" --> GRAF
+    LOKI -- "query" --> GRAF
+    GRAF -- "dashboards / drill-down" --> ENG
+
+    %% Alert flow
+    PROM -- "evaluate rules<br/>fire alert (severity)" --> AM
+    AM -- "webhook POST /alertmanager" --> AAS
+    AAS -- "read/write" --> STATE
+    AAS -- "post enriched message" --> MSG
+    MSG --> ENG
+    ENG -- "Ack / Assign / Note /<br/>Pause / Reject / Resolve" --> MSG
+    MSG -- "action payload" --> AAS
+
+    %% Resolution flow
+    PROM -- "condition clears<br/>send RESOLVED" --> AM
+    AM -- "resolved webhook" --> AAS
+    AAS -- "separate message<br/>(original not edited)" --> RESMSG
+    RESMSG --> ENG
+
+    classDef aws fill:#FF9900,stroke:#232F3E,color:#232F3E
+    classDef mon fill:#1f77b4,stroke:#0d3a5c,color:#fff
+    classDef slack fill:#4A154B,stroke:#2c0e2d,color:#fff
+    class S1,S2,S3 aws
+    class PROM,LOKI,GRAF,AM,AAS,STATE mon
+    class MSG,RESMSG slack
 ```
 
 ### Monitoring Flow Overview
@@ -273,6 +336,231 @@ Original firing message is **not** rewritten. Instead, a separate message is pos
 ```
 
 This keeps incident history clean and easy to understand.
+
+---
+
+## 📊 System Diagrams (DFD / ERD / Use Case)
+
+### 1️⃣ Data Flow Diagram (DFD)
+
+Shows how telemetry and alert data move between external entities, processes, and data stores.
+
+```mermaid
+flowchart TB
+    %% External Entities
+    SRV([Production Servers])
+    ENG([Engineer])
+    ADM([Administrator])
+    SLK([Slack Platform])
+
+    %% Processes
+    P1(("1.0<br/>Collect Metrics & Logs<br/>Grafana Alloy"))
+    P2(("2.0<br/>Store & Evaluate Metrics<br/>Prometheus"))
+    P3(("2.1<br/>Store Logs<br/>Loki"))
+    P4(("3.0<br/>Visualize Data<br/>Grafana"))
+    P5(("4.0<br/>Route Alerts<br/>Alertmanager"))
+    P6(("5.0<br/>Process & Notify<br/>Alert Action Service"))
+    P7(("6.0<br/>Manage Incident<br/>Slack Interaction"))
+    P8(("7.0<br/>Deploy & Configure<br/>Ansible"))
+
+    %% Data Stores
+    D1[(D1: Prometheus TSDB)]
+    D2[(D2: Loki Log Store)]
+    D3[(D3: Alert State JSON File)]
+    D4[(D4: Alert Rules Config)]
+
+    %% Flows
+    SRV -- "CPU / Mem / Disk / Container / App metrics" --> P1
+    SRV -- "System & app logs" --> P1
+
+    P1 -- "remote_write metrics" --> P2
+    P1 -- "log streams" --> P3
+
+    P2 -- "write metrics" --> D1
+    P3 -- "write logs" --> D2
+
+    D1 -- "query metrics" --> P4
+    D2 -- "query logs" --> P4
+    P4 -- "dashboards" --> ENG
+
+    D4 -- "alert rules" --> P2
+    P2 -- "firing/resolved alerts" --> P5
+    P5 -- "webhook: alert payload" --> P6
+
+    P6 -- "read/write state" --> D3
+    P6 -- "enriched incident message" --> P7
+    P7 -- "post message / buttons" --> SLK
+    SLK -- "interactive message" --> ENG
+    ENG -- "Ack / Assign / Note / Pause / Reject / Resolve" --> SLK
+    SLK -- "action payload" --> P7
+    P7 -- "update state" --> D3
+    P7 -- "resolution notice" --> SLK
+    SLK -- "resolved notification" --> ENG
+
+    ADM -- "SSH / playbook run" --> P8
+    P8 -- "install & configure Alloy" --> SRV
+    ADM -- "define thresholds" --> D4
+    ADM -- "manage inventory" --> P8
+```
+
+### 2️⃣ Entity Relationship Diagram (ERD)
+
+Logical data model for servers, metrics, alerts, alert state, engineers, and Slack notifications.
+
+```mermaid
+erDiagram
+    SERVER ||--o{ METRIC : generates
+    SERVER ||--o{ LOG_ENTRY : generates
+    SERVER ||--o{ ALERT : triggers
+    SERVER {
+        string instance_id PK
+        string hostname
+        string ip_address
+        string environment
+        string role
+        boolean alloy_installed
+    }
+
+    METRIC {
+        string metric_id PK
+        string server_id FK
+        string metric_name
+        float value
+        datetime timestamp
+    }
+
+    LOG_ENTRY {
+        string log_id PK
+        string server_id FK
+        string source
+        string message
+        datetime timestamp
+    }
+
+    ALERT_RULE ||--o{ ALERT : defines
+    ALERT_RULE {
+        string rule_id PK
+        string alert_name
+        string expr
+        string severity
+        string for_duration
+        string summary_template
+    }
+
+    ALERT ||--|| ALERT_STATE : has
+    ALERT ||--o{ SLACK_NOTIFICATION : produces
+    ALERT {
+        string alert_id PK
+        string rule_id FK
+        string server_id FK
+        string status
+        float metric_value
+        datetime started_at
+        datetime resolved_at
+    }
+
+    ALERT_STATE {
+        string alert_id PK, FK
+        string status
+        string acknowledged_by FK
+        datetime acknowledged_at
+        string assigned_to FK
+        string notes
+        datetime silenced_until
+    }
+
+    ENGINEER ||--o{ ALERT_STATE : acknowledges
+    ENGINEER ||--o{ ALERT_STATE : assigned_to
+    ENGINEER ||--o{ SLACK_NOTIFICATION : receives
+    ENGINEER {
+        string engineer_id PK
+        string username
+        string slack_user_id
+        string team
+    }
+
+    SLACK_NOTIFICATION {
+        string notification_id PK
+        string alert_id FK
+        string message_ts
+        string channel
+        string type
+        datetime sent_at
+    }
+
+    DASHBOARD {
+        string dashboard_id PK
+        string name
+        string datasource
+    }
+
+    DASHBOARD ||--o{ SERVER : visualizes
+```
+
+### 3️⃣ Use Case Diagram
+
+Actors and their interactions with the monitoring platform.
+
+```mermaid
+flowchart LR
+    Engineer(["🧑‍💻 Engineer"])
+    Admin(["🛠️ Administrator"])
+    Prometheus(["⚙️ Prometheus<br/>(system actor)"])
+    Slack(["💬 Slack<br/>(system actor)"])
+
+    subgraph SYS["Promax Monitoring System"]
+        UC1(["View Dashboards"])
+        UC2(["Explore Logs"])
+        UC3(["Check Alert History"])
+        UC4(["Receive Slack Incident Notification"])
+        UC5(["Acknowledge Alert"])
+        UC6(["Assign Alert"])
+        UC7(["Add Note to Incident"])
+        UC8(["Pause / Silence Alert"])
+        UC9(["Reject Alert"])
+        UC10(["Mark Alert Resolved"])
+        UC11(["Receive Resolved Notification"])
+        UC12(["Configure Alert Rules"])
+        UC13(["Configure Alertmanager Routing"])
+        UC14(["Deploy Grafana Alloy via Ansible"])
+        UC15(["Add Server to Inventory"])
+        UC16(["Configure Slack App / Tokens"])
+        UC17(["Create Custom Dashboard"])
+        UC18(["Evaluate Alert Rule"])
+        UC19(["Fire / Resolve Alert"])
+    end
+
+    Engineer --> UC1
+    Engineer --> UC2
+    Engineer --> UC3
+    Engineer --> UC4
+    Engineer --> UC5
+    Engineer --> UC6
+    Engineer --> UC7
+    Engineer --> UC8
+    Engineer --> UC9
+    Engineer --> UC10
+    Engineer --> UC11
+    Engineer --> UC17
+
+    Admin --> UC12
+    Admin --> UC13
+    Admin --> UC14
+    Admin --> UC15
+    Admin --> UC16
+    Admin --> UC1
+    Admin --> UC17
+
+    Prometheus --> UC18
+    Prometheus --> UC19
+
+    UC19 -.include.-> UC4
+    UC10 -.include.-> UC11
+    Slack --> UC4
+    Slack --> UC11
+    UC5 -.extend.-> UC7
+    UC6 -.extend.-> UC7
+```
 
 ---
 

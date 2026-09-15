@@ -910,21 +910,6 @@ Verify:
 
 ---
 
-## 🔐 Security
-
-### **Security Best Practices**
-
-For production use:
-
-- 🔒 **Do not commit `.env` files** containing Slack tokens
-- 🔒 **Do not commit SSH private keys** to Git
-- 🔒 **Restrict monitoring ports** using firewall/security groups
-- 🔒 **Expose Grafana/Prometheus only** to authorized networks
-- 🔒 **Use HTTPS/reverse proxy** when exposing outside trusted network
-- 🔒 **Use least-privilege service accounts** where possible
-- 🔒 **Protect Ansible credentials and SSH keys**
-- 🔒 **Restrict write access** to acknowledgement state file
-- 🔒 **Keep backups** of monitoring configuration
 
 ### **`.gitignore` Template**
 
@@ -1107,12 +1092,12 @@ For issues, improvements, or questions:
 
 ## 📄 License & Ownership
 
-This repository is intended for **internal Promax/Tech Bridge monitoring infrastructure**.
+This repository is intended for **Tech Bridge monitoring infrastructure**.
 
 Add your organization's preferred license and operational ownership information before making public.
 
 ---
 
-**Last Updated:** January 2024  
+**Last Updated:** 15 sept 2026  
 **Version:** 1.0  
-**Maintained by:** Platform Engineering Team
+**Maintained by:** Ahmad Raza 

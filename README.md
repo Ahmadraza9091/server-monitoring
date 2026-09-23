@@ -1,4 +1,4 @@
-# Promax Production Monitoring System
+# Proxmox Production Monitoring System
 
 [![Status](https://img.shields.io/badge/status-production-green?style=for-the-badge)](https://github.com)
 [![License](https://img.shields.io/badge/license-proprietary-blue?style=for-the-badge)](LICENSE)

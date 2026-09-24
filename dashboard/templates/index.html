@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#07111f">
+  <title>Promax Incident Command</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">+</span><div><strong>Promax</strong><small>Incident Command</small></div></div>
+      <nav aria-label="Dashboard views">
+        <button class="nav-item active" data-status="active"><span>●</span> Active incidents <b id="nav-active">0</b></button>
+        <button class="nav-item" data-status="all"><span>▦</span> All incidents <b id="nav-all">0</b></button>
+        <button class="nav-item" data-status="resolved"><span>✓</span> Resolved <b id="nav-resolved">0</b></button>
+      </nav>
+      <div class="sidebar-footer"><span class="pulse"></span> Incident service online<div id="updated-label">Waiting for data</div></div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <div><p class="eyebrow">OPERATIONS / INCIDENTS</p><h1>Incident overview</h1><p class="subtitle">A live view of every alert, owner, and response action.</p></div>
+        <div class="top-actions"><label class="refresh-control">Auto-refresh <select id="refresh"><option value="15">15 sec</option><option value="30">30 sec</option><option value="60">1 min</option><option value="0">Off</option></select></label><button id="refresh-now" class="icon-button" title="Refresh now">↻</button></div>
+      </header>
+      <section class="metrics" aria-label="Incident metrics">
+        <article class="metric-card"><span class="metric-icon red">!</span><div><p>Active incidents</p><strong id="metric-active">—</strong><small id="metric-active-note">Loading</small></div></article>
+        <article class="metric-card"><span class="metric-icon amber">◷</span><div><p>Needs response</p><strong id="metric-unack">—</strong><small>Unacknowledged alerts</small></div></article>
+        <article class="metric-card"><span class="metric-icon blue">◎</span><div><p>Assigned</p><strong id="metric-assigned">—</strong><small>With an active owner</small></div></article>
+        <article class="metric-card"><span class="metric-icon green">✓</span><div><p>Resolved</p><strong id="metric-resolved">—</strong><small>In retained history</small></div></article>
+      </section>
+      <section class="workspace">
+        <div class="toolbar"><div class="view-heading"><h2 id="view-title">Active incidents</h2><span id="result-count" class="count-badge">0</span></div><div class="filters"><label class="search"><span>⌕</span><input id="search" type="search" placeholder="Search alert, server, owner..." autocomplete="off"></label><select id="severity"><option value="">All severities</option><option value="critical">Critical</option><option value="warning">Warning</option><option value="info">Info</option></select></div></div>
+        <div id="error" class="error-banner" role="alert" hidden></div>
+        <div class="incident-table-wrap"><table><thead><tr><th>Incident</th><th>Severity</th><th>State</th><th>Owner</th><th>Started</th><th>Updated</th><th></th></tr></thead><tbody id="incident-list"></tbody></table><div id="empty" class="empty" hidden><div class="empty-icon">✓</div><h3>No incidents found</h3><p>Try changing the view or search filters.</p></div></div>
+      </section>
+    </main>
+  </div>
+  <dialog id="detail-dialog"><div class="dialog-header"><div><p class="eyebrow">INCIDENT DETAIL</p><h2 id="detail-title">Incident</h2></div><button id="close-dialog" class="close-button" aria-label="Close">×</button></div><div id="detail-content" class="detail-content"></div></dialog>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+flask>=3.0.0
+requests>=2.31.0
+slack_bolt>=1.18.0
+slack_sdk>=3.27.0
+pymysql>=1.1.0
+cryptography>=42.0.0
+python-dotenv>=1.0.0
+bcrypt>=4.1.0
+pytz>=2024.1

@@ -15,8 +15,6 @@ services:
       - '--storage.tsdb.path=/prometheus'
       - '--storage.tsdb.retention.time=30d'
       - '--web.enable-remote-write-receiver'
-    networks:
-      - proxmox-net
 
   grafana:
     image: grafana/grafana:11.2.0
@@ -30,8 +28,6 @@ services:
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
       - grafana_data:/var/lib/grafana
-    networks:
-      - proxmox-net
 
   alertmanager:
     image: prom/alertmanager:v0.28.1
@@ -48,9 +44,6 @@ services:
     command:
       - '--config.file=/etc/alertmanager/alertmanager.yml'
       - '--storage.path=/alertmanager'
-    networks:
-      - proxmox-net
-
 
   loki:
     image: grafana/loki:3.5.0
@@ -63,9 +56,10 @@ services:
       - loki_data:/loki
     command:
       - "-config.file=/etc/loki/local-config.yaml"
-    networks:
-      - proxmox-net
 
+  # ==========================================
+  # Database Service (MariaDB)
+  # ==========================================
   mariadb:
     image: mariadb:11.4
     container_name: mariadb
@@ -82,72 +76,47 @@ services:
       - ./alert-action/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mariadb-admin ping -h 127.0.0.1 -u root -p$${MYSQL_ROOT_PASSWORD} || exit 1"]
+      interval: 5s
+      timeout: 5s
       retries: 10
-
       start_period: 20s
 
-    networks:
-
-      - proxmox-net
-
-
+  # ==========================================
+  # Alert Action Bot & Dashboard Service
+  # ==========================================
   alert-action:
-
     build:
-
       context: ./alert-action
-
       dockerfile: Dockerfile
-
     container_name: alert-action
     restart: always
-
     env_file:
-
       - ./alert-action/.env
-
     depends_on:
-
       mariadb:
-
         condition: service_healthy
       alertmanager:
-
         condition: service_started
     ports:
-
       - "5000:5000"
     environment:
-
+      # Database connection inside Docker network
       - DB_HOST=mariadb
-
       - DB_PORT=3306
       - DB_NAME=${DB_NAME:-proxmox_alerts}
-
       - DB_USER=${DB_USER:-proxmox_user}
       - DB_PASSWORD=${DB_PASSWORD:-tbcadmin123@}
-
+      # Alertmanager & Prometheus URLs (Direct container-to-container)
       - ALERTMANAGER_URL=http://alertmanager:9093
       - PROMETHEUS_URL=http://prometheus:9090
       - GRAFANA_URL=http://grafana:3000
-
       - SLACK_CHANNEL=#warning-alerts
     volumes:
-
       - ./alert-action/app.py:/app/app.py
-      - ./alert-action/login.html:/app/login.html:ro
       - ./alert-action/dashboard.html:/app/dashboard.html:ro
+      - ./alert-action/login.html:/app/login.html:ro
       - alert_action_data:/var/lib/alert-action
       - ./alert-action/logs:/var/log
-
-    networks:
-      - proxmox-net
-
-
-networks:
-  proxmox-net:
-    driver: bridge
-
 
 volumes:
   prometheus_data:
